@@ -80,7 +80,17 @@ unzip data.zip
 mv data/* . && rmdir data
 ```
 
-The zip extracts into a nested `data/` subfolder, so the `mv`/`rmdir` above flattens it back into `data/ITS-5M/` directly (matching every `--data-dir ./data/ITS-5M` used throughout this README). This should give you `trainset.fasta` / `trainset_labels.csv` and the held-out test sets `knn_its_clean.py` expects (`test1.fasta` = Yeast, `test2.fasta` = Filamentous, `test3.fasta` = MycoAI's own test set — check the archive's contents against [MycoAI's `data/` folder](https://github.com/MycoAI/MycoAI/tree/master/data) if any are missing).
+The zip extracts into a nested `data/` subfolder, so the `mv`/`rmdir` above flattens it back into `data/ITS-5M/` directly (matching every `--data-dir ./data/ITS-5M` used throughout this README). This gives you six FASTA files only -- `trainset.fasta`, `trainset_valid.fasta`, and the held-out test sets `knn_its_clean.py` expects (`test1.fasta` = Yeast, `test2.fasta` = Filamentous, `test3.fasta` = MycoAI's own test set). **It does NOT include any `_labels.csv` file** -- neither this Zenodo archive nor [MycoAI's `data/` folder](https://github.com/MycoAI/MycoAI/tree/master/data) on GitHub ships the labels CSVs that `datasets.py` requires next to each FASTA file; build them yourself in the next step.
+
+#### Building the `_labels.csv` files
+
+`barcodebert/datasets.py`'s ITS-5M loader requires a `<name>_labels.csv` next to every FASTA file (`phylum,class,order,family,genus,species`, integer-encoded, with `9999999` marking a value absent from the training vocabulary) and raises `FileNotFoundError` if it's missing. These are generated with `data/build_its_labels.py`, which fits a `TaxonEncoder` on `trainset.fasta` only (so the vocabulary is the training vocabulary) and applies that same encoder to every other file -- this is what makes species/genera absent from training collapse to `9999999` instead of getting their own index, which must not happen per-file or train/test comparisons become meaningless:
+
+```shell
+python data/build_its_labels.py --data-dir data/ITS-5M
+```
+
+This writes `trainset_labels.csv`, `trainset_valid_labels.csv`, `test1_labels.csv`, `test2_labels.csv`, and `test3_labels.csv` into `data/ITS-5M/`. Verified byte-for-byte identical (`pandas.DataFrame.equals`) against the labels used to produce the paper's results.
 
 Optionally, run `data/preprocess_its.py` to apply the BarcodeMamba+-style filtering (drop duplicate sequence-label pairs, outlier-length sequences, sequences with >5% ambiguous bases, and rare labels — see the script's docstring for the full recipe).
 
@@ -95,6 +105,19 @@ python barcodebert/analyze_its_overlap.py \
 ```
 
 This also prints the train/test overlap breakdown per test set (species/genus/barcode overlap, exact vs. substring duplicates) used for the paper's overlap audit. Pass `--include-leaked` to export the *non*-deduplicated counterpart of the same task files instead (same task definitions, but without excluding duplicate specimens), if you want to compare against the deduplicated numbers.
+
+#### Exporting standalone deduplicated test sets
+
+To share just the specimens actually used for genus-level evaluation (e.g. with a collaborator, without handing over the full dataset), `data/export_dedup_test_sets.py` filters `test1.fasta`/`test2.fasta` and their `_labels.csv` down to the `task == "genus_level"` ids from the task CSVs above:
+
+```shell
+python data/export_dedup_test_sets.py \
+  --data-dir ./data/ITS-5M \
+  --tasks-dir ./data/ITS-5M/tasks \
+  --out-dir ./data/ITS-5M/dedup_exports
+```
+
+Produces `test1_yeast_dedup_genus_level.fasta` (526 sequences) and `test2_filamentous_dedup_genus_level.fasta` (3,136 sequences) — matching the paper's reported counts exactly.
 
 ## Quick start
 

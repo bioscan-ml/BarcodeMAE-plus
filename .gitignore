@@ -10,5 +10,6 @@ wandb/
 model_checkpoints/
 main_checkpoints_final/
 data/BIOSCAN-5M/
+data/ITS-5M/
 data/*.tsv
 data/*.fasta
